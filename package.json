@@ -200,6 +200,13 @@
           "default": false,
           "scope": "resource",
           "description": "是否开启详细日志输出"
+        },
+        "ace-sidebar.userGuidelines": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "用户指南，用于自定义 AI 助手的行为和响应方式",
+          "markdownDescription": "用户指南，用于自定义 AI 助手的行为和响应方式。如果未设置，则使用空字符串。"
         }
       }
     }

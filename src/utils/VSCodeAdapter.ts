@@ -56,7 +56,8 @@ export function getVSCodeConfig(): Config {
     excludePatterns: (config.get<string[]>('excludePatterns', []) || [])
       .map((item) => item.trim())
       .filter((item) => item.length > 0),
-    enableLog: config.get<boolean>('enableLog', false)
+    enableLog: config.get<boolean>('enableLog', false),
+    userGuidelines: (config.get<string>('userGuidelines', '') || '').trim() || undefined
   };
 }
 

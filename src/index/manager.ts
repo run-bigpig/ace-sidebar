@@ -117,6 +117,7 @@ export class IndexManager {
   private excludePatterns: string[];
   private indexFilePath: string;
   private httpClient: AxiosInstance;
+  private userGuidelines: string;
 
   constructor(
     projectRoot: string,
@@ -125,7 +126,8 @@ export class IndexManager {
     textExtensions: Set<string>,
     batchSize: number,
     maxLinesPerBlob: number = 800,
-    excludePatterns: string[] = []
+    excludePatterns: string[] = [],
+    userGuidelines: string = ''
   ) {
     this.projectRoot = projectRoot;
     this.baseUrl = baseUrl.replace(/\/$/, '');
@@ -134,6 +136,7 @@ export class IndexManager {
     this.batchSize = batchSize;
     this.maxLinesPerBlob = maxLinesPerBlob;
     this.excludePatterns = excludePatterns;
+    this.userGuidelines = userGuidelines || '';
     this.indexFilePath = getIndexFilePath(projectRoot);
 
     this.httpClient = axios.create({
@@ -1098,7 +1101,7 @@ ${query}`;
       context_code_exchange_request_id: null,
       external_source_ids: [],
       disable_auto_external_sources: null,
-      user_guidelines: '', // 可以根据需要添加用户指南
+      user_guidelines: this.userGuidelines,
       workspace_guidelines: '',
       feature_detection_flags: {
         support_tool_use_start: true,

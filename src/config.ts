@@ -10,5 +10,6 @@ export interface Config {
   textExtensions: Set<string>;
   excludePatterns: string[];
   enableLog: boolean;
+  userGuidelines?: string;
 }
 

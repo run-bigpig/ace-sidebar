@@ -150,7 +150,8 @@ export class ChatService {
         this.config.textExtensions,
         this.config.batchSize,
         this.config.maxLinesPerBlob,
-        this.config.excludePatterns
+        this.config.excludePatterns,
+        this.config.userGuidelines || ''
       );
 
       sendLog('info', `🔍 代码搜索: ${userMessage}`);
@@ -193,7 +194,8 @@ export class ChatService {
             this.config.textExtensions,
             this.config.batchSize,
             this.config.maxLinesPerBlob,
-            this.config.excludePatterns
+            this.config.excludePatterns,
+            this.config.userGuidelines || ''
           );
 
           sendLog('info', `🔍 搜索查询: ${query}`);
@@ -314,7 +316,8 @@ export class ChatService {
         this.config.textExtensions,
         this.config.batchSize,
         this.config.maxLinesPerBlob,
-        this.config.excludePatterns
+        this.config.excludePatterns,
+        this.config.userGuidelines || ''
       );
 
       sendLog('info', `✨ 提示词增强: ${userMessage}`);
@@ -327,7 +330,7 @@ export class ChatService {
       });
 
       sendLog('info', '✅ 提示词增强完成');
-      return `**增强后的提示词：**\n\n${enhancedQuery}`;
+      return enhancedQuery;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const friendlyMessage = this.getFriendlyErrorMessage(errorMessage);
@@ -366,7 +369,8 @@ export class ChatService {
         this.config.textExtensions,
         this.config.batchSize,
         this.config.maxLinesPerBlob,
-        this.config.excludePatterns
+        this.config.excludePatterns,
+        this.config.userGuidelines || ''
       );
 
       sendLog('info', `💬 用户消息: ${userMessage}`);
@@ -449,7 +453,8 @@ export class ChatService {
         this.config.textExtensions,
         this.config.batchSize,
         this.config.maxLinesPerBlob,
-        this.config.excludePatterns
+        this.config.excludePatterns,
+        this.config.userGuidelines || ''
       );
 
       sendLog('info', `💬 用户消息: ${userMessage}`);
@@ -570,7 +575,8 @@ export class ChatService {
         this.config.textExtensions,
         this.config.batchSize,
         this.config.maxLinesPerBlob,
-        this.config.excludePatterns
+        this.config.excludePatterns,
+        this.config.userGuidelines || ''
       );
 
       await indexManager.indexProject((update) => this.reportIndexProgress(update));

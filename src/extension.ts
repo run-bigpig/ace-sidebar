@@ -237,7 +237,8 @@ export function activate(context: vscode.ExtensionContext) {
         latestConfig.textExtensions,
         latestConfig.batchSize,
         latestConfig.maxLinesPerBlob,
-        latestConfig.excludePatterns
+        latestConfig.excludePatterns,
+        latestConfig.userGuidelines || ''
       );
 
       await indexManager.indexFile(document.uri.fsPath, (update) => {

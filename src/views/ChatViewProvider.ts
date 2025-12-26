@@ -152,7 +152,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const userMsg: ChatMessage = {
       id: this.generateMessageId(),
       role: 'user',
-      content: `[代码搜索] ${userMessage}`,
+      content: userMessage,
       timestamp: Date.now()
     };
     this.messages.push(userMsg);
@@ -220,7 +220,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const userMsg: ChatMessage = {
       id: this.generateMessageId(),
       role: 'user',
-      content: `[提示词增强] ${userMessage}`,
+      content: userMessage,
       timestamp: Date.now()
     };
     this.messages.push(userMsg);
@@ -407,6 +407,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const trashIcon: string = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`;
     const searchIcon: string = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>`;
     const sparklesIcon: string = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="M5 3v4"></path><path d="M19 17v4"></path><path d="M3 5h4"></path><path d="M17 19h4"></path></svg>`;
+    const copyIcon: string = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h8c1.1 0 2 .9 2 2"></path></svg>`;
+    const checkIcon: string = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
 
     return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -558,6 +560,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             flex-direction: column;
             max-width: 85%;
             animation: fadeIn 0.25s ease-in;
+            position: relative;
         }
 
         @keyframes fadeIn {
@@ -577,12 +580,59 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             color: var(--muted);
         }
 
+        .message-content-wrapper {
+            position: relative;
+        }
+
         .message-content {
             padding: 10px 12px;
             border-radius: 8px;
             line-height: 1.5;
             word-wrap: break-word;
             white-space: pre-wrap;
+        }
+
+        .message-copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            border: none;
+            padding: 4px 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s ease, background-color 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            z-index: 10;
+        }
+
+        .message:hover .message-copy-btn {
+            opacity: 1;
+        }
+
+        .message-copy-btn:hover {
+            background: var(--vscode-button-secondaryHoverBackground);
+        }
+
+        .message-copy-btn:active {
+            transform: scale(0.95);
+        }
+
+        .message-copy-btn.copied {
+            opacity: 1;
+            background: var(--vscode-inputValidation-infoBackground);
+            color: var(--vscode-inputValidation-infoForeground);
+        }
+
+        .message-copy-btn svg {
+            width: 14px;
+            height: 14px;
         }
 
         .message.user .message-content {
@@ -857,6 +907,39 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             \`;
         }
 
+        function cleanMessageContent(content) {
+            if (!content) return '';
+            
+            let cleaned = content;
+            
+            // 移除 "增强后的提示词：" 及其后的换行（支持多种格式）
+            cleaned = cleaned.replace(/\\*\\*增强后的提示词：\\*\\*\\s*\\n\\n?/g, '');
+            cleaned = cleaned.replace(/增强后的提示词：\\s*\\n\\n?/g, '');
+            
+            // 移除 ### BEGIN RESPONSE ### 和 ### END RESPONSE ### 标记
+            cleaned = cleaned.replace(/###\\s*BEGIN\\s*RESPONSE\\s*###/gi, '');
+            cleaned = cleaned.replace(/###\\s*END\\s*RESPONSE\\s*###/gi, '');
+            
+            // 移除 <augment-enhanced-prompt> 标签，但保留标签内的内容
+            cleaned = cleaned.replace(/<augment-enhanced-prompt>/gi, '');
+            cleaned = cleaned.replace(/<\\/augment-enhanced-prompt>/gi, '');
+            
+            // 移除其他可能的元数据标记和说明文本
+            cleaned = cleaned.replace(/Here is an enhanced version of the original instruction that is more specific and clear:/gi, '');
+            cleaned = cleaned.replace(/Here is an enhanced version of the original instruction:/gi, '');
+            
+            // 清理多余的空白行（保留最多两个连续换行）
+            cleaned = cleaned.replace(/\\n{3,}/g, '\\n\\n');
+            
+            // 清理行首行尾的空白
+            cleaned = cleaned.split('\\n').map(line => line.trim()).join('\\n');
+            
+            // 去除首尾空白
+            cleaned = cleaned.trim();
+            
+            return cleaned;
+        }
+
         function renderMessages(messages) {
             const configRequiredHtml = renderConfigRequired();
             const guideHtml = isConfigured ? renderFirstVisitGuide() : '';
@@ -871,24 +954,88 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 return;
             }
 
-            messagesContainer.innerHTML = configRequiredHtml + guideHtml + messages.map(msg => {
+            messagesContainer.innerHTML = configRequiredHtml + guideHtml + messages.map((msg, index) => {
                 const roleText = msg.role === 'user' ? 'You' : 'Ace Sidebar';
                 const roleClass = msg.role;
+                const cleanedContent = cleanMessageContent(msg.content);
+                const messageId = 'msg-' + index;
+                // 将内容转义为 HTML 属性值
+                const escapedContent = cleanedContent
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
                 return \`
                     <div class="message \${roleClass}">
                         <div class="message-header">
                             <span class="message-role">\${roleText}</span>
                             <span class="message-time">\${formatTime(msg.timestamp)}</span>
                         </div>
-                        <div class="message-content">\${escapeHtml(msg.content)}</div>
+                        <div class="message-content-wrapper">
+                            <div class="message-content" id="content-\${messageId}">\${escapeHtml(cleanedContent)}</div>
+                            <button class="message-copy-btn" 
+                                    data-message-id="\${messageId}" 
+                                    data-content="\${escapedContent}"
+                                    title="复制消息">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h8c1.1 0 2 .9 2 2"></path></svg>
+                            </button>
+                        </div>
                     </div>
                 \`;
             }).join('');
 
+            // 绑定复制按钮事件
+            messagesContainer.querySelectorAll('.message-copy-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const button = e.target.closest('.message-copy-btn');
+                    const content = button.getAttribute('data-content');
+                    const textContent = decodeHtmlEntities(content);
+                    
+                    try {
+                        await navigator.clipboard.writeText(textContent);
+                        button.classList.add('copied');
+                        button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+                        setTimeout(() => {
+                            button.classList.remove('copied');
+                            button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h8c1.1 0 2 .9 2 2"></path></svg>';
+                        }, 2000);
+                    } catch (err) {
+                        // 降级方案：使用传统方法
+                        const textArea = document.createElement('textarea');
+                        textArea.value = textContent;
+                        textArea.style.position = 'fixed';
+                        textArea.style.opacity = '0';
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        try {
+                            document.execCommand('copy');
+                            button.classList.add('copied');
+                            button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+                            setTimeout(() => {
+                                button.classList.remove('copied');
+                                button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h8c1.1 0 2 .9 2 2"></path></svg>';
+                            }, 2000);
+                        } catch (fallbackErr) {
+                            console.error('复制失败:', fallbackErr);
+                        }
+                        document.body.removeChild(textArea);
+                    }
+                });
+            });
+
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
+        function decodeHtmlEntities(text) {
+            const div = document.createElement('div');
+            div.innerHTML = text;
+            return div.textContent || div.innerText || '';
+        }
+
         function escapeHtml(text) {
+            if (!text) return '';
             const div = document.createElement('div');
             div.textContent = text;
             let html = div.innerHTML;

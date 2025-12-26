@@ -1,0 +1,231 @@
+{
+  "name": "ace-sidebar",
+  "displayName": "Ace Sidebar",
+  "description": "Codebase indexing and semantic search tool for VSCode",
+  "version": "0.1.0",
+  "publisher": "ace-tool",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ace-sidebar",
+          "title": "Ace Sidebar",
+          "icon": "$(code)"
+        }
+      ]
+    },
+    "views": {
+      "ace-sidebar": [
+        {
+          "id": "ace-sidebar.chatView",
+          "name": "Ace Sidebar Chat",
+          "type": "webview",
+          "when": "true"
+        },
+        {
+          "id": "aceSidebar",
+          "name": "Ace Sidebar",
+          "when": "false"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "ace-sidebar.chatView",
+        "contents": "点击侧边栏图标打开聊天对话框"
+      }
+    ],
+    "commands": [
+      {
+        "command": "ace-sidebar.searchContext",
+        "title": "Ace Sidebar: Search Context",
+        "category": "Ace Sidebar",
+        "icon": "$(search)"
+      },
+      {
+        "command": "ace-sidebar.openChat",
+        "title": "Ace Sidebar: Open Chat",
+        "category": "Ace Sidebar",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "ace-sidebar.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ace-sidebar.openSettings",
+        "title": "Ace Sidebar: Open Settings",
+        "category": "Ace Sidebar",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "ace-sidebar.chatView.focus",
+        "title": "Focus Chat View",
+        "category": "Ace Sidebar"
+      }
+    ],
+    "configuration": {
+      "title": "Ace Sidebar",
+      "properties": {
+        "ace-sidebar.baseUrl": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "API 服务的基础 URL 地址（必填）",
+          "markdownDescription": "API 服务的基础 URL 地址（必填）。示例：`https://api.example.com`"
+        },
+        "ace-sidebar.token": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "format": "password",
+          "description": "API 认证令牌（必填）",
+          "markdownDescription": "API 认证令牌（必填）。建议从服务端获取后粘贴"
+        },
+        "ace-sidebar.batchSize": {
+          "type": "number",
+          "default": 10,
+          "scope": "resource",
+          "description": "每批上传的文件切片数量",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "ace-sidebar.maxLinesPerBlob": {
+          "type": "number",
+          "default": 800,
+          "scope": "resource",
+          "description": "单个文件切片的最大行数",
+          "minimum": 100,
+          "maximum": 2000
+        },
+        "ace-sidebar.textExtensions": {
+          "type": "array",
+          "default": [
+            ".py",
+            ".js",
+            ".ts",
+            ".jsx",
+            ".tsx",
+            ".java",
+            ".go",
+            ".rs",
+            ".cpp",
+            ".c",
+            ".h",
+            ".hpp",
+            ".cs",
+            ".rb",
+            ".php",
+            ".swift",
+            ".kt",
+            ".scala",
+            ".clj",
+            ".md",
+            ".txt",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".xml",
+            ".ini",
+            ".conf",
+            ".html",
+            ".css",
+            ".scss",
+            ".sass",
+            ".less",
+            ".sql",
+            ".sh",
+            ".bash",
+            ".ps1",
+            ".bat",
+            ".vue",
+            ".svelte"
+          ],
+          "scope": "resource",
+          "description": "需要索引的文件扩展名列表",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ace-sidebar.excludePatterns": {
+          "type": "array",
+          "default": [
+            ".venv",
+            "venv",
+            ".env",
+            "env",
+            "node_modules",
+            ".git",
+            ".svn",
+            ".hg",
+            "__pycache__",
+            ".pytest_cache",
+            ".mypy_cache",
+            ".tox",
+            ".eggs",
+            "*.egg-info",
+            "dist",
+            "build",
+            "target",
+            "out",
+            ".idea",
+            ".vscode",
+            ".vs",
+            ".DS_Store",
+            "Thumbs.db",
+            "*.pyc",
+            "*.pyo",
+            "*.pyd",
+            "*.so",
+            "*.dll",
+            ".ace-tool"
+          ],
+          "scope": "resource",
+          "description": "索引时排除的路径或通配符模式",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ace-sidebar.enableLog": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "是否开启详细日志输出"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "iconv-lite": "^0.6.3",
+    "ignore": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ]
+}

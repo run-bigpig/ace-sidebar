@@ -9,6 +9,16 @@ import { IndexProgressUpdate } from '../index/manager';
 import { getVSCodeConfig } from '../utils/VSCodeAdapter';
 
 /**
+ * MCP Server 状态接口
+ */
+export interface McpServerStatus {
+  enabled: boolean;
+  running: boolean;
+  port: number;
+  endpoint: string;
+}
+
+/**
  * 聊天 WebviewView 提供者
  */
 export class ChatViewProvider implements vscode.WebviewViewProvider {
@@ -22,11 +32,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private isConfigured: boolean = false;
   private workspaceName: string = ''; // 缓存工作区名称
   private editorChangeDisposable?: vscode.Disposable; // 编辑器变化监听器
+  private getMcpStatus: () => McpServerStatus; // MCP 状态获取函数
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly _context: vscode.ExtensionContext
+    private readonly _context: vscode.ExtensionContext,
+    getMcpStatus: () => McpServerStatus
   ) {
+    this.getMcpStatus = getMcpStatus;
     // 检测是否首次访问（同步检查）
     this.checkFirstVisit();
     
@@ -178,6 +191,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             // 保存用户已查看过引导的状态
             this._context.globalState.update('ace-sidebar.hasVisited', true);
             this.updateWebview();
+            break;
+          case 'getMcpStatus':
+            // 返回 MCP 状态
+            const status = this.getMcpStatus();
+            webviewView.webview.postMessage({
+              command: 'mcpStatus',
+              status
+            });
+            break;
+          case 'copyMcpConfig':
+            // 复制 MCP 配置到剪贴板
+            await this.handleCopyMcpConfig();
             break;
         }
       }
@@ -409,13 +434,40 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private updateWebview(): void {
     if (this._view) {
       const editorContext = this.getEditorContextForUI();
+      const mcpStatus = this.getMcpStatus();
       this._view.webview.postMessage({
         command: 'updateMessages',
         messages: this.messages,
         isFirstVisit: this.isFirstVisit,
         isConfigured: this.isConfigured,
-        editorContext: editorContext
+        editorContext: editorContext,
+        mcpStatus: mcpStatus
       });
+    }
+  }
+
+  /**
+   * 处理复制 MCP 配置
+   * 只复制 URL 地址
+   */
+  private async handleCopyMcpConfig(): Promise<void> {
+    const status = this.getMcpStatus();
+    
+    if (!status.enabled) {
+      vscode.window.showWarningMessage('MCP Server 未启用，请先在设置中启用');
+      return;
+    }
+    
+    if (!status.running) {
+      vscode.window.showWarningMessage('MCP Server 未运行');
+      return;
+    }
+    
+    try {
+      await vscode.env.clipboard.writeText(status.endpoint);
+      vscode.window.showInformationMessage(`已复制: ${status.endpoint}`);
+    } catch (error) {
+      vscode.window.showErrorMessage('复制失败');
     }
   }
 
@@ -900,6 +952,76 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             height: 16px;
             stroke-width: 2;
         }
+
+        /* MCP 状态显示器样式 */
+        .mcp-status-bar {
+            padding: 6px 16px;
+            background-color: var(--vscode-editor-background);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .mcp-status-bar:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+
+        .mcp-status-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .mcp-status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            transition: background-color 0.3s ease;
+        }
+
+        .mcp-status-indicator.running {
+            background-color: #4caf50;
+            box-shadow: 0 0 4px #4caf50;
+        }
+
+        .mcp-status-indicator.stopped {
+            background-color: #757575;
+        }
+
+        .mcp-status-indicator.disabled {
+            background-color: #f44336;
+        }
+
+        .mcp-status-text {
+            color: var(--muted);
+        }
+
+        .mcp-status-endpoint {
+            color: var(--text);
+            font-family: var(--vscode-editor-font-family);
+            font-size: 10px;
+        }
+
+        .mcp-copy-icon {
+            color: var(--muted);
+            opacity: 0.6;
+            display: flex;
+            align-items: center;
+            transition: opacity 0.2s ease;
+        }
+
+        .mcp-status-bar:hover .mcp-copy-icon {
+            opacity: 1;
+        }
+
+        .mcp-copy-icon svg {
+            width: 14px;
+            height: 14px;
+        }
     </style>
 </head>
 <body>
@@ -957,6 +1079,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     </div>
                 </div>
             </div>
+            <div class="mcp-status-bar" id="mcpStatusBar" title="点击复制 MCP 端点 URL">
+                <div class="mcp-status-left">
+                    <div class="mcp-status-indicator stopped" id="mcpStatusIndicator"></div>
+                    <span class="mcp-status-text" id="mcpStatusText">MCP Server: 未启用</span>
+                    <span class="mcp-status-endpoint" id="mcpStatusEndpoint"></span>
+                </div>
+                <span class="mcp-copy-icon">${copyIcon}</span>
+            </div>
         </footer>
     </div>
 
@@ -974,9 +1104,44 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const fileContextItem = document.getElementById('fileContextItem');
         const progressMessage = document.getElementById('progressMessage');
         const progressPercent = document.getElementById('progressPercent');
+        const mcpStatusBar = document.getElementById('mcpStatusBar');
+        const mcpStatusIndicator = document.getElementById('mcpStatusIndicator');
+        const mcpStatusText = document.getElementById('mcpStatusText');
+        const mcpStatusEndpoint = document.getElementById('mcpStatusEndpoint');
         let isProcessing = false;
         let isFirstVisit = false;
         let isConfigured = false; // 初始值，会在 updateMessages 时更新
+
+        /**
+         * 更新 MCP 状态显示
+         */
+        function updateMcpStatus(status) {
+            if (!status) return;
+            
+            // 更新指示器状态
+            mcpStatusIndicator.className = 'mcp-status-indicator';
+            
+            if (!status.enabled) {
+                mcpStatusIndicator.classList.add('disabled');
+                mcpStatusText.textContent = 'MCP Server: 未启用';
+                mcpStatusEndpoint.textContent = '';
+            } else if (status.running) {
+                mcpStatusIndicator.classList.add('running');
+                mcpStatusText.textContent = 'MCP Server: 运行中';
+                mcpStatusEndpoint.textContent = status.endpoint;
+            } else {
+                mcpStatusIndicator.classList.add('stopped');
+                mcpStatusText.textContent = 'MCP Server: 已停止';
+                mcpStatusEndpoint.textContent = '';
+            }
+        }
+
+        /**
+         * 处理 MCP 状态栏点击事件
+         */
+        mcpStatusBar.addEventListener('click', () => {
+            vscode.postMessage({ command: 'copyMcpConfig' });
+        });
 
         function updateEditorContext(context) {
             // 【修复问题2&3】独立处理 workspaceName 和 fileName 的显示
@@ -1317,6 +1482,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     isConfigured = message.isConfigured || false;
                     renderMessages(message.messages || []);
                     updateEditorContext(message.editorContext);
+                    updateMcpStatus(message.mcpStatus);
                     isProcessing = false;
                     updateUIState();
                     if (isConfigured) {
@@ -1326,11 +1492,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case 'indexProgress':
                     updateIndexProgress(message.update);
                     break;
+                case 'mcpStatus':
+                    updateMcpStatus(message.status);
+                    break;
             }
         });
 
         // 页面加载时初始化 UI 状态
         updateUIState();
+        
+        // 请求初始 MCP 状态
+        vscode.postMessage({ command: 'getMcpStatus' });
     </script>
 </body>
 </html>`;

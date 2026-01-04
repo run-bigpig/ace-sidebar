@@ -9,7 +9,6 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import * as z from 'zod';
 import express, { Express, Request, Response } from 'express';
 import { Config } from '../config';
-import { sendLog } from '../utils/VSCodeAdapter';
 import { IndexManager } from '../index/manager';
 
 export class MCPServer {
@@ -28,7 +27,6 @@ export class MCPServer {
    */
   async start(config: Config): Promise<void> {
     if (this.isRunning) {
-      sendLog('info', 'MCP Server 已经在运行中');
       return;
     }
 
@@ -51,7 +49,7 @@ export class MCPServer {
 
       // 设置错误处理
       this.server.server.onerror = (error: Error) => {
-        sendLog('error', `MCP Server 错误: ${error.message}`);
+        console.error('MCP Server 错误:', error.message);
       };
 
       // 创建 Express 应用
@@ -78,8 +76,6 @@ export class MCPServer {
             return;
           }
 
-          sendLog('info', `收到 MCP 请求: ${req.method}`);
-
           // 创建 Streamable HTTP 传输（无状态模式）
           const transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: undefined, // 无状态模式
@@ -93,12 +89,11 @@ export class MCPServer {
 
           // 处理连接关闭
           req.on('close', () => {
-            sendLog('info', 'MCP 连接已关闭');
             transport.close();
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          sendLog('error', `MCP 请求处理错误: ${message}`);
+          console.error('MCP 请求处理错误:', message);
           if (!res.headersSent) {
             res.status(500).json({ error: message });
           }
@@ -107,7 +102,6 @@ export class MCPServer {
 
       // 兼容旧的 SSE 端点（重定向到 /mcp）
       this.expressApp.get('/sse', async (req: Request, res: Response) => {
-        sendLog('info', '收到旧的 /sse 端点请求，重定向到 /mcp');
         // 转发到 /mcp 端点
         req.url = '/mcp';
         this.expressApp!._router.handle(req, res);
@@ -121,15 +115,10 @@ export class MCPServer {
       // 启动 HTTP 服务器
       this.httpServer = this.expressApp.listen(this.port, () => {
         this.isRunning = true;
-        sendLog('info', `MCP Server 已启动，监听端口: ${this.port}`);
-        sendLog('info', `MCP 端点: http://localhost:${this.port}/mcp`);
-        vscode.window.showInformationMessage(
-          `Ace Sidebar MCP Server 已启动在端口 ${this.port}`
-        );
       });
 
       this.httpServer.on('error', (error: Error) => {
-        sendLog('error', `HTTP 服务器错误: ${error.message}`);
+        console.error('HTTP 服务器错误:', error.message);
         if ((error as any).code === 'EADDRINUSE') {
           vscode.window.showErrorMessage(
             `端口 ${this.port} 已被占用，请修改配置或关闭占用该端口的程序`
@@ -138,7 +127,7 @@ export class MCPServer {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      sendLog('error', `启动 MCP Server 失败: ${message}`);
+      console.error('启动 MCP Server 失败:', message);
       throw error;
     }
   }
@@ -232,8 +221,6 @@ Examples:
         const projectRoot = workspaceFolder.uri.fsPath;
 
         try {
-          sendLog('info', `MCP: 收到代码库搜索请求: ${query}`);
-
           // 使用 IndexManager 执行搜索
           const indexManager = new IndexManager(
             projectRoot,
@@ -247,14 +234,7 @@ Examples:
           );
 
           // 执行代码搜索
-          const result = await indexManager.searchCodebase(query.trim(), {
-            reporter: (update) => {
-              // 可以在这里报告进度，但 MCP 工具调用通常不需要进度报告
-              sendLog('info', `MCP: 搜索进度: ${update.message || update.stage}`);
-            }
-          });
-
-          sendLog('info', 'MCP: 代码库搜索完成');
+          const result = await indexManager.searchCodebase(query.trim());
 
           // 返回搜索结果
           return {
@@ -267,7 +247,6 @@ Examples:
           };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          sendLog('error', `MCP: 代码库搜索失败: ${message}`);
           throw new Error(`搜索失败: ${message}`);
         }
       }
@@ -285,9 +264,7 @@ Examples:
 
     try {
       if (this.httpServer) {
-        this.httpServer.close(() => {
-          sendLog('info', 'MCP Server 已停止');
-        });
+        this.httpServer.close();
         this.httpServer = null;
       }
 
@@ -300,7 +277,7 @@ Examples:
       this.isRunning = false;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      sendLog('error', `停止 MCP Server 失败: ${message}`);
+      console.error('停止 MCP Server 失败:', message);
     }
   }
 

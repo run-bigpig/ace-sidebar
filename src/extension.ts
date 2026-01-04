@@ -61,8 +61,8 @@ function updateStatusBar(): void {
   if (chatStatusBarItem) {
     if (isConfigured) {
       chatStatusBarItem.command = 'ace-sidebar.openChat';
-      chatStatusBarItem.text = '$(comment-discussion) Chat';
-      chatStatusBarItem.tooltip = 'Open Ace Sidebar Chat';
+      chatStatusBarItem.text = '$(comment-discussion)';
+      chatStatusBarItem.tooltip = 'Open Ace Sidebar';
     } else {
       chatStatusBarItem.command = 'ace-sidebar.openSettings';
       chatStatusBarItem.text = '$(gear) Chat Setup';
@@ -76,6 +76,23 @@ function updateConfigState(config: Config | null): void {
   sidebarProvider?.setConfigured(isConfigured);
   chatViewProvider?.setConfigured(isConfigured);
   updateStatusBar();
+}
+
+/**
+ * 获取 MCP Server 状态信息
+ */
+function getMcpServerStatus(): { enabled: boolean; running: boolean; port: number; endpoint: string } {
+  const config = loadConfig(false);
+  const enabled = config?.enableMcpServer !== false;
+  const status = mcpServer?.getStatus() || { isRunning: false, port: 13000 };
+  const port = config?.mcpServerPort || 13000;
+  
+  return {
+    enabled,
+    running: status.isRunning,
+    port: port,
+    endpoint: `http://localhost:${port}/mcp`
+  };
 }
 
 function ensureServices(config: Config): void {
@@ -211,7 +228,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(treeView);
 
   // Chat View Provider (侧边栏内的聊天对话框)
-  chatViewProvider = new ChatViewProvider(context.extensionUri, context);
+  chatViewProvider = new ChatViewProvider(context.extensionUri, context, getMcpServerStatus);
   const chatViewDisposable = vscode.window.registerWebviewViewProvider(
     ChatViewProvider.viewType,
     chatViewProvider,
@@ -300,7 +317,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Ace Sidebar Chat Error: ${message}`);
+      vscode.window.showErrorMessage(`Ace Sidebar Error: ${message}`);
       sendLog('error', `Open chat failed: ${message}`);
     }
   });
@@ -350,7 +367,8 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
     const latestConfig = loadConfig(false);
-    updateConfigState(latestConfig);
+    // 【修复】文件保存时不重复更新配置状态，避免触发 ChatView 重新渲染
+    // updateConfigState 只应在配置真正改变时调用（如启动时、配置变更时）
     if (!latestConfig) {
       return;
     }

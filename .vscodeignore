@@ -9,4 +9,8 @@ tsconfig.json
 .eslintrc.json
 **/*.map
 **/*.ts
+*.zip
+*.log
+*.txt
+*.md
 

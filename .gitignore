@@ -6,3 +6,4 @@ node_modules
 *.log
 AGENT.md
 curl.txt
+.ace-tool/

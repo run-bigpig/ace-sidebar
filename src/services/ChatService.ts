@@ -868,8 +868,7 @@ export class ChatService {
         <main class="body">
             <div class="messages-container" id="messagesContainer">
                 <div class="empty-state">
-                    <h3>Start a conversation</h3>
-                    <p>Ask a question to search your codebase.</p>
+                    <h3>Ask a question to search your codebase.</h3>
                 </div>
             </div>
         </main>
@@ -923,8 +922,7 @@ export class ChatService {
             if (messages.length === 0) {
                 messagesContainer.innerHTML = \`
                     <div class="empty-state">
-                        <h3>Start a conversation</h3>
-                        <p>Ask a question to search your codebase.</p>
+                        <h3>Ask a question to search your codebase or enhance your prompts </h3>
                     </div>
                 \`;
                 return;

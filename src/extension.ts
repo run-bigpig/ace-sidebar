@@ -373,7 +373,14 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
 
-    ensureServices(latestConfig);
+    // 【修复问题1】移除 ensureServices 调用
+    // 文件保存时不应该重新配置服务，服务已经在插件启动和配置变更时正确初始化
+    // 频繁调用 ensureServices 会：
+    // 1. 重置 chatService.hasAutoIndexed 标志
+    // 2. 重复设置 chatViewProvider 的进度报告器
+    // 3. 可能触发 MCP Server 的不必要重启
+    // 这些操作会干扰正常的文件索引流程，导致不必要的状态重置
+    
     const projectRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!projectRoot) {
       return;

@@ -52,8 +52,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   /**
    * 设置 ChatService 实例
+   * 【修复问题2】添加检查，避免重复设置相同的 chatService 实例
    */
   public setChatService(chatService: ChatService): void {
+    // 如果是同一个实例，无需重复设置
+    if (this.chatService === chatService) {
+      return;
+    }
+    
     this.chatService = chatService;
     // 设置进度报告器
     chatService.setProgressReporter((update) => {
@@ -97,12 +103,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   /**
    * 设置编辑器变化监听器，实时同步当前文件显示
+   * 【修复问题3】文件切换时只更新编辑器上下文，不重新渲染整个消息列表
    */
   private setupEditorChangeListener(): void {
     // 监听活动编辑器变化事件
     this.editorChangeDisposable = vscode.window.onDidChangeActiveTextEditor((editor) => {
-      // 当编辑器切换或关闭时，更新 UI
-      this.updateWebview();
+      // 当编辑器切换或关闭时，只更新编辑器上下文信息
+      // 不重新发送整个消息列表，避免前端重新渲染聊天记录
+      this.updateEditorContextOnly();
     });
   }
 
@@ -429,7 +437,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * 更新 WebView 内容
+   * 更新 WebView 内容（完整更新，包括消息列表）
    */
   private updateWebview(): void {
     if (this._view) {
@@ -442,6 +450,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         isConfigured: this.isConfigured,
         editorContext: editorContext,
         mcpStatus: mcpStatus
+      });
+    }
+  }
+
+  /**
+   * 仅更新编辑器上下文信息（不重新渲染消息列表）
+   * 【修复问题3】文件切换时使用此方法，避免聊天记录重新渲染
+   */
+  private updateEditorContextOnly(): void {
+    if (this._view) {
+      const editorContext = this.getEditorContextForUI();
+      this._view.webview.postMessage({
+        command: 'updateEditorContext',
+        editorContext: editorContext
       });
     }
   }
@@ -1488,6 +1510,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     if (isConfigured) {
                         messageInput.focus();
                     }
+                    break;
+                case 'updateEditorContext':
+                    // 【修复问题3】仅更新编辑器上下文，不重新渲染消息列表
+                    updateEditorContext(message.editorContext);
                     break;
                 case 'indexProgress':
                     updateIndexProgress(message.update);

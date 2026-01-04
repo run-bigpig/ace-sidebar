@@ -5,13 +5,20 @@ import { Config } from './config';
 import { getVSCodeConfig, sendLog } from './utils/VSCodeAdapter';
 import { SidebarProvider } from './views/SidebarProvider';
 import { ChatViewProvider } from './views/ChatViewProvider';
+import { MCPServer } from './mcp/server';
 
 let chatService: ChatService | null = null;
 let sidebarProvider: SidebarProvider | null = null;
 let chatViewProvider: ChatViewProvider | null = null;
+let mcpServer: MCPServer | null = null;
 let isConfigured = false;
 let statusBarItem: vscode.StatusBarItem | null = null;
 let chatStatusBarItem: vscode.StatusBarItem | null = null;
+
+// 索引同步优化相关变量
+let isIndexing = false; // 标志位：是否正在进行索引同步
+let indexDebounceTimers: Map<string, NodeJS.Timeout> = new Map(); // 防抖定时器映射表
+const INDEX_DEBOUNCE_DELAY = 500; // 防抖延迟时间（毫秒）
 
 function openSettings(): void {
   vscode.commands.executeCommand('workbench.action.openSettings', 'ace-sidebar');
@@ -82,6 +89,116 @@ function ensureServices(config: Config): void {
   if (chatViewProvider && chatService) {
     chatViewProvider.setChatService(chatService);
   }
+
+  // 管理 MCP Server
+  manageMcpServer(config);
+}
+
+/**
+ * 管理 MCP Server 的启动和停止
+ */
+async function manageMcpServer(config: Config): Promise<void> {
+  const shouldEnable = config.enableMcpServer !== false; // 默认为 true
+  const port = config.mcpServerPort || 13000;
+
+  if (shouldEnable) {
+    // 需要启动或重启 MCP Server
+    if (mcpServer) {
+      const status = mcpServer.getStatus();
+      if (status.isRunning && status.port !== port) {
+        // 端口变化，需要重启
+        await mcpServer.stop();
+        mcpServer = null;
+      } else if (status.isRunning) {
+        // 已经在运行，无需操作
+        return;
+      }
+    }
+
+    // 创建并启动新的 MCP Server
+    if (!mcpServer) {
+      mcpServer = new MCPServer(port);
+    }
+
+    try {
+      await mcpServer.start(config);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendLog('error', `启动 MCP Server 失败: ${message}`);
+      mcpServer = null;
+    }
+  } else {
+    // 需要停止 MCP Server
+    if (mcpServer) {
+      await mcpServer.stop();
+      mcpServer = null;
+    }
+  }
+}
+
+/**
+ * 执行文件索引同步（带防抖和去重机制）
+ * @param filePath 文件路径
+ * @param config 配置对象
+ */
+async function indexFileWithDebounce(filePath: string, config: Config): Promise<void> {
+  // 清除该文件之前的防抖定时器
+  const existingTimer = indexDebounceTimers.get(filePath);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    indexDebounceTimers.delete(filePath);
+  }
+
+  // 创建新的防抖定时器
+  const timer = setTimeout(async () => {
+    // 移除已完成的定时器
+    indexDebounceTimers.delete(filePath);
+
+    // 检查是否已有正在进行的索引任务
+    if (isIndexing) {
+      sendLog('info', `跳过索引同步，当前有正在进行的索引任务: ${filePath}`);
+      return;
+    }
+
+    // 设置索引标志
+    isIndexing = true;
+
+    try {
+      const projectRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!projectRoot) {
+        return;
+      }
+
+      const indexManager = new IndexManager(
+        projectRoot,
+        config.baseUrl,
+        config.token,
+        config.textExtensions,
+        config.batchSize,
+        config.maxLinesPerBlob,
+        config.excludePatterns,
+        config.userGuidelines || ''
+      );
+
+      sendLog('info', `开始索引文件: ${filePath}`);
+      
+      await indexManager.indexFile(filePath, (update) => {
+        chatService?.reportIndexProgress(update);
+        chatViewProvider?.reportIndexProgress(update);
+      });
+
+      sendLog('info', `文件索引完成: ${filePath}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendLog('error', `索引同步失败: ${message}`);
+    } finally {
+      // 重置索引标志
+      isIndexing = false;
+    }
+  }, INDEX_DEBOUNCE_DELAY);
+
+  // 保存定时器
+  indexDebounceTimers.set(filePath, timer);
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -97,7 +214,14 @@ export function activate(context: vscode.ExtensionContext) {
   chatViewProvider = new ChatViewProvider(context.extensionUri, context);
   const chatViewDisposable = vscode.window.registerWebviewViewProvider(
     ChatViewProvider.viewType,
-    chatViewProvider
+    chatViewProvider,
+    {
+      // 【关键修复】启用 retainContextWhenHidden，防止标签页切换时 webview 重新加载
+      // 这会使 webview 在隐藏时保持其 DOM 状态，避免重复渲染
+      webviewOptions: {
+        retainContextWhenHidden: true
+      }
+    }
   );
   context.subscriptions.push(chatViewDisposable);
 
@@ -209,10 +333,18 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
     ensureServices(latestConfig);
+    
+    // 如果 MCP Server 相关配置变化，需要重新管理
+    if (
+      event.affectsConfiguration('ace-sidebar.enableMcpServer') ||
+      event.affectsConfiguration('ace-sidebar.mcpServerPort')
+    ) {
+      manageMcpServer(latestConfig);
+    }
   });
   context.subscriptions.push(configChange);
 
-  // File save listener for incremental indexing
+  // File save listener for incremental indexing (with debounce and deduplication)
   const fileSave = vscode.workspace.onDidSaveTextDocument(async (document) => {
     if (document.uri.scheme !== 'file') {
       return;
@@ -229,35 +361,34 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
 
-    try {
-      const indexManager = new IndexManager(
-        projectRoot,
-        latestConfig.baseUrl,
-        latestConfig.token,
-        latestConfig.textExtensions,
-        latestConfig.batchSize,
-        latestConfig.maxLinesPerBlob,
-        latestConfig.excludePatterns,
-        latestConfig.userGuidelines || ''
-      );
-
-      await indexManager.indexFile(document.uri.fsPath, (update) => {
-        chatService?.reportIndexProgress(update);
-        chatViewProvider?.reportIndexProgress(update);
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      sendLog('error', `Index on save failed: ${message}`);
-    }
+    // 使用防抖机制触发索引
+    await indexFileWithDebounce(document.uri.fsPath, latestConfig);
   });
   context.subscriptions.push(fileSave);
 }
 
-export function deactivate() {
+export async function deactivate() {
+  // 清理所有防抖定时器
+  indexDebounceTimers.forEach((timer) => {
+    clearTimeout(timer);
+  });
+  indexDebounceTimers.clear();
+
+  // 停止 MCP Server
+  if (mcpServer) {
+    await mcpServer.stop();
+    mcpServer = null;
+  }
+
   if (chatService) {
     chatService.dispose();
     chatService = null;
   }
+  
+  if (chatViewProvider) {
+    chatViewProvider.dispose();
+    chatViewProvider = null;
+  }
+  
   sidebarProvider = null;
-  chatViewProvider = null;
 }

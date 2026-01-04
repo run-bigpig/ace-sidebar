@@ -57,7 +57,9 @@ export function getVSCodeConfig(): Config {
       .map((item) => item.trim())
       .filter((item) => item.length > 0),
     enableLog: config.get<boolean>('enableLog', false),
-    userGuidelines: (config.get<string>('userGuidelines', '') || '').trim() || undefined
+    userGuidelines: (config.get<string>('userGuidelines', '') || '').trim() || undefined,
+    mcpServerPort: config.get<number>('mcpServerPort', 13000),
+    enableMcpServer: config.get<boolean>('enableMcpServer', true)
   };
 }
 

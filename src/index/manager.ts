@@ -42,6 +42,26 @@ interface Blob {
 }
 
 /**
+ * 编辑器上下文信息接口
+ */
+export interface EditorContext {
+  // 文件相关信息
+  filePath: string;          // 文件的相对路径
+  fileName: string;          // 文件名（含扩展名）
+  absolutePath: string;      // 文件的绝对路径
+  languageId: string;        // 编程语言标识符
+  
+  // 代码内容
+  prefix: string;            // 选中代码前的内容
+  selectedCode: string;      // 选中的代码
+  suffix: string;            // 选中代码后的内容
+  
+  // 工作区信息
+  workspaceName: string;     // 工作区目录名
+  hasSelection: boolean;     // 是否有选中内容
+}
+
+/**
  * 索引结果接口
  */
 interface IndexResult {
@@ -195,6 +215,14 @@ export class IndexManager {
 
   public getBlobNames(): string[] {
     return this.loadIndexStore().blob_names;
+  }
+
+  /**
+   * 获取当前编辑器的上下文信息（公共接口）
+   * @returns 编辑器上下文对象，如果没有活动编辑器则返回 null
+   */
+  public getEditorContext(): EditorContext | null {
+    return this.getCurrentEditorContext();
   }
 
   private collectBlobNames(fileMap: Record<string, string[]>): string[] {
@@ -906,6 +934,108 @@ export class IndexManager {
   }
 
   /**
+   * 获取当前编辑器的上下文信息
+   * @returns 编辑器上下文对象，如果没有活动编辑器则返回 null
+   */
+  private getCurrentEditorContext(): EditorContext | null {
+    // 获取当前活动的编辑器
+    const activeEditor = vscode.window.activeTextEditor;
+    
+    // 边界条件：没有打开任何文件
+    if (!activeEditor) {
+      sendLog('info', '没有活动的编辑器');
+      return null;
+    }
+
+    const document = activeEditor.document;
+    const selection = activeEditor.selection;
+    
+    // 获取文件的完整文本内容
+    const fullText = document.getText();
+    
+    // 获取文件路径信息
+    const absolutePath = document.uri.fsPath;
+    const fileName = path.basename(absolutePath);
+    
+    // 计算相对路径
+    let relativePath = absolutePath;
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    let workspaceName = 'Unknown';
+    
+    if (workspaceFolders && workspaceFolders.length > 0) {
+      const workspaceFolder = workspaceFolders[0];
+      relativePath = vscode.workspace.asRelativePath(absolutePath);
+      workspaceName = path.basename(workspaceFolder.uri.fsPath);
+    }
+    
+    // 检查是否有选中内容
+    const hasSelection = !selection.isEmpty;
+    
+    let prefix = '';
+    let selectedCode = '';
+    let suffix = '';
+    
+    if (hasSelection) {
+      // 有选中内容的情况
+      // 获取选中的文本
+      selectedCode = document.getText(selection);
+      
+      // 获取 prefix：从文件开头到选中区域起始位置
+      const prefixRange = new vscode.Range(
+        new vscode.Position(0, 0),
+        selection.start
+      );
+      prefix = document.getText(prefixRange);
+      
+      // 获取 suffix：从选中区域结束位置到文件末尾
+      const lastLine = document.lineCount - 1;
+      const lastChar = document.lineAt(lastLine).text.length;
+      const suffixRange = new vscode.Range(
+        selection.end,
+        new vscode.Position(lastLine, lastChar)
+      );
+      suffix = document.getText(suffixRange);
+    } else {
+      // 没有选中内容的情况：使用当前光标位置
+      const cursorPosition = selection.active;
+      
+      // prefix：从文件开头到光标位置
+      const prefixRange = new vscode.Range(
+        new vscode.Position(0, 0),
+        cursorPosition
+      );
+      prefix = document.getText(prefixRange);
+      
+      // suffix：从光标位置到文件末尾
+      const lastLine = document.lineCount - 1;
+      const lastChar = document.lineAt(lastLine).text.length;
+      const suffixRange = new vscode.Range(
+        cursorPosition,
+        new vscode.Position(lastLine, lastChar)
+      );
+      suffix = document.getText(suffixRange);
+      
+      // selectedCode 为空字符串
+      selectedCode = '';
+    }
+    
+    // 获取编程语言标识符
+    const languageId = document.languageId;
+    
+    return {
+      filePath: relativePath,
+      fileName: fileName,
+      absolutePath: absolutePath,
+      languageId: languageId,
+      prefix: prefix,
+      selectedCode: selectedCode,
+      suffix: suffix,
+      workspaceName: workspaceName,
+      hasSelection: hasSelection
+    };
+  }
+
+  /**
    * 处理流式响应，提取增强后的提示词
    * 响应格式为 JSONL（每行一个 JSON 对象），需要逐行解析
    */
@@ -1083,15 +1213,18 @@ Here is my original instruction:
 ${query}`;
 
     // 构建完整的请求体，完全模拟 curl.txt 中的结构
+    // 获取当前编辑器的上下文信息
+    const editorContext = this.getCurrentEditorContext();
+    
     const payload = {
       model: null,
-      path: null,
-      prefix: null,
-      selected_code: null,
-      suffix: null,
+      path: editorContext?.filePath || null,
+      prefix: editorContext?.prefix || null,
+      selected_code: editorContext?.selectedCode || null,
+      suffix: editorContext?.suffix || null,
       message: '',
       chat_history: [],
-      lang: null,
+      lang: editorContext?.languageId || null,
       blobs: {
         checkpoint_id: null,
         added_blobs: blobNames,

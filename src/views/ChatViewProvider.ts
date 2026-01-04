@@ -3,6 +3,7 @@
  */
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { ChatService, ChatMessage } from '../services/ChatService';
 import { IndexProgressUpdate } from '../index/manager';
 import { getVSCodeConfig } from '../utils/VSCodeAdapter';
@@ -19,6 +20,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private lastIndexProgress: IndexProgressUpdate | null = null;
   private isFirstVisit: boolean = false;
   private isConfigured: boolean = false;
+  private workspaceName: string = ''; // 缓存工作区名称
+  private editorChangeDisposable?: vscode.Disposable; // 编辑器变化监听器
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -26,6 +29,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   ) {
     // 检测是否首次访问（同步检查）
     this.checkFirstVisit();
+    
+    // 初始化工作区名称（在插件启动时固定获取）
+    this.initializeWorkspaceName();
+    
+    // 监听编辑器切换事件，实时更新当前文件显示
+    this.setupEditorChangeListener();
   }
 
   /**
@@ -62,6 +71,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * 初始化工作区名称（在插件启动时固定获取）
+   */
+  private initializeWorkspaceName(): void {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (workspaceFolders && workspaceFolders.length > 0) {
+      this.workspaceName = path.basename(workspaceFolders[0].uri.fsPath);
+    } else {
+      this.workspaceName = 'No Workspace';
+    }
+  }
+
+  /**
+   * 设置编辑器变化监听器，实时同步当前文件显示
+   */
+  private setupEditorChangeListener(): void {
+    // 监听活动编辑器变化事件
+    this.editorChangeDisposable = vscode.window.onDidChangeActiveTextEditor((editor) => {
+      // 当编辑器切换或关闭时，更新 UI
+      this.updateWebview();
+    });
+  }
+
+  /**
    * 检查配置状态
    */
   private checkConfigState(): void {
@@ -71,6 +103,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     } catch {
       this.isConfigured = false;
     }
+  }
+
+  /**
+   * 获取当前编辑器的上下文信息用于 UI 显示
+   * 【修复问题2&3】workspaceName 和 fileName 分离处理
+   * - workspaceName: 始终返回（项目目录应始终显示）
+   * - fileName: 仅当有文件打开时返回，否则为 null
+   */
+  private getEditorContextForUI(): { workspaceName: string; fileName: string | null } {
+    const activeEditor = vscode.window.activeTextEditor;
+    
+    // workspaceName 始终使用缓存的工作区名称（在插件启动时固定获取）
+    // 这确保了项目目录始终显示，不受文件打开/关闭状态影响
+    
+    // fileName 仅在有有效的文件打开时才显示
+    let fileName: string | null = null;
+    
+    if (activeEditor) {
+      const document = activeEditor.document;
+      // 只处理文件系统中的文件，排除输出面板、终端等
+      if (document.uri.scheme === 'file') {
+        fileName = path.basename(document.uri.fsPath);
+      }
+    }
+    
+    return {
+      workspaceName: this.workspaceName, // 始终返回工作区名称
+      fileName: fileName // 当没有打开文件时为 null
+    };
   }
 
   /**
@@ -347,11 +408,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    */
   private updateWebview(): void {
     if (this._view) {
+      const editorContext = this.getEditorContextForUI();
       this._view.webview.postMessage({
         command: 'updateMessages',
         messages: this.messages,
         isFirstVisit: this.isFirstVisit,
-        isConfigured: this.isConfigured
+        isConfigured: this.isConfigured,
+        editorContext: editorContext
       });
     }
   }
@@ -409,6 +472,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const sparklesIcon: string = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="M5 3v4"></path><path d="M19 17v4"></path><path d="M3 5h4"></path><path d="M17 19h4"></path></svg>`;
     const copyIcon: string = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h8c1.1 0 2 .9 2 2"></path></svg>`;
     const checkIcon: string = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    const folderIcon: string = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`;
+    const fileIcon: string = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
 
     return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -677,43 +742,79 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         .foot-input {
             border-top: 1px solid var(--border);
             background-color: var(--surface-alt);
-            padding: 12px 16px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
             flex-shrink: 0;
         }
 
-        .index-status {
+        .input-header {
             display: flex;
-            flex-direction: column;
-            gap: 6px;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background-color: var(--vscode-editor-background);
+            border-bottom: 1px solid var(--border);
             font-size: 11px;
+        }
+
+        .context-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             color: var(--muted);
         }
 
-        .progress-track {
-            height: 4px;
-            background: var(--border);
-            border-radius: 999px;
-            overflow: hidden;
+        .context-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
-        .progress-bar {
-            height: 100%;
-            width: 0;
-            background: var(--vscode-progressBar-background, var(--accent));
-            transition: width 0.2s ease;
+        .context-icon {
+            display: flex;
+            align-items: center;
+            color: var(--muted);
+            opacity: 0.7;
         }
 
-        .progress-bar.error {
-            background: var(--vscode-inputValidation-errorBorder);
+        .context-icon svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .context-value {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .progress-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .progress-percent {
+            font-weight: 600;
+            color: var(--accent);
+            min-width: 35px;
+            text-align: right;
+        }
+
+        .progress-percent.error {
+            color: var(--vscode-inputValidation-errorBorder);
+        }
+
+        .context-info-hidden {
+            visibility: hidden;
         }
 
         .input-row {
             display: flex;
             align-items: flex-end;
             position: relative;
+            padding: 12px 16px;
         }
 
         .input-wrapper {
@@ -824,10 +925,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         </main>
 
         <footer class="foot-input">
-            <div class="index-status">
-                <div class="status-text" id="indexStatusText">Index idle</div>
-                <div class="progress-track">
-                    <div class="progress-bar" id="indexProgressBar"></div>
+            <div class="input-header">
+                <div class="context-info" id="contextInfo">
+                    <div class="context-item">
+                        <span class="context-icon">${folderIcon}</span>
+                        <span class="context-value" id="workspaceName">-</span>
+                    </div>
+                    <div class="context-item" id="fileContextItem" style="display: none;">
+                        <span class="context-icon">${fileIcon}</span>
+                        <span class="context-value" id="fileName">-</span>
+                    </div>
+                </div>
+                <div class="progress-info">
+                    <span id="progressMessage">Ready</span>
+                    <span class="progress-percent" id="progressPercent">0%</span>
                 </div>
             </div>
             <div class="input-row">
@@ -858,11 +969,40 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const settingsBtn = document.getElementById('settingsBtn');
         const codebaseSearchBtn = document.getElementById('codebaseSearchBtn');
         const promptEnhanceBtn = document.getElementById('promptEnhanceBtn');
-        const indexStatusText = document.getElementById('indexStatusText');
-        const indexProgressBar = document.getElementById('indexProgressBar');
+        const contextInfo = document.getElementById('contextInfo');
+        const workspaceName = document.getElementById('workspaceName');
+        const fileName = document.getElementById('fileName');
+        const fileContextItem = document.getElementById('fileContextItem');
+        const progressMessage = document.getElementById('progressMessage');
+        const progressPercent = document.getElementById('progressPercent');
         let isProcessing = false;
         let isFirstVisit = false;
         let isConfigured = false; // 初始值，会在 updateMessages 时更新
+
+        function updateEditorContext(context) {
+            // 【修复问题2&3】独立处理 workspaceName 和 fileName 的显示
+            // workspaceName: 始终显示项目目录，不受文件打开/关闭状态影响
+            // fileName: 仅当有文件打开时显示，否则隐藏整个文件区域
+            
+            if (context && context.workspaceName) {
+                // 项目目录始终显示
+                workspaceName.textContent = context.workspaceName;
+            } else {
+                workspaceName.textContent = 'No Workspace';
+            }
+            
+            // 当前文件：仅当有文件打开时显示文件图标和文件名
+            if (context && context.fileName) {
+                fileName.textContent = context.fileName;
+                fileContextItem.style.display = 'flex'; // 显示文件图标和文件名
+            } else {
+                fileName.textContent = '';
+                fileContextItem.style.display = 'none'; // 隐藏文件图标和文件名
+            }
+            
+            // context-info 区域始终可见（不再隐藏）
+            contextInfo.classList.remove('context-info-hidden');
+        }
 
         function formatTime(timestamp) {
             const date = new Date(timestamp);
@@ -875,9 +1015,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
             const percent = typeof update.percent === 'number' ? update.percent : 0;
             const safePercent = Math.max(0, Math.min(100, percent));
-            indexStatusText.textContent = update.message || 'Indexing...';
-            indexProgressBar.style.width = safePercent + '%';
-            indexProgressBar.className = update.stage === 'error' ? 'progress-bar error' : 'progress-bar';
+            progressMessage.textContent = update.message || 'Processing...';
+            progressPercent.textContent = safePercent.toFixed(0) + '%';
+            
+            if (update.stage === 'error') {
+                progressPercent.classList.add('error');
+            } else {
+                progressPercent.classList.remove('error');
+            }
         }
 
         function renderConfigRequired() {
@@ -1173,6 +1318,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     isFirstVisit = message.isFirstVisit || false;
                     isConfigured = message.isConfigured || false;
                     renderMessages(message.messages || []);
+                    updateEditorContext(message.editorContext);
                     isProcessing = false;
                     updateUIState();
                     if (isConfigured) {
@@ -1190,6 +1336,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     </script>
 </body>
 </html>`;
+  }
+
+  /**
+   * 清理资源
+   */
+  public dispose(): void {
+    // 清理编辑器变化监听器
+    if (this.editorChangeDisposable) {
+      this.editorChangeDisposable.dispose();
+      this.editorChangeDisposable = undefined;
+    }
   }
 }
 

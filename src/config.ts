@@ -11,5 +11,7 @@ export interface Config {
   excludePatterns: string[];
   enableLog: boolean;
   userGuidelines?: string;
+  mcpServerPort?: number;
+  enableMcpServer?: boolean;
 }
 

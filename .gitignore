@@ -4,6 +4,7 @@ node_modules
 *.vsix
 .DS_Store
 *.log
-AGENT.md
+AGENTs.md
 curl.txt
 .ace-sidebar
+..ace-sidebar/

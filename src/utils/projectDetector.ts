@@ -8,7 +8,7 @@ import path from 'path';
 
 /**
  * 检测项目根目录
- * 优先级：..ace-sidebar/ > .git/
+ * 优先级：.ace-sidebar/ > .git/
  *
  * @param workspacePath VSCode 工作区路径
  * @returns 项目根目录路径
@@ -18,8 +18,8 @@ export function detectProjectRoot(workspacePath: string): string {
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    // 优先检查 ..ace-sidebar 目录
-    const acePath = path.join(currentDir, '..ace-sidebar');
+    // 优先检查 .ace-sidebar 目录
+    const acePath = path.join(currentDir, '.ace-sidebar');
     if (fs.existsSync(acePath) && fs.statSync(acePath).isDirectory()) {
       return currentDir;
     }
@@ -41,24 +41,24 @@ export function detectProjectRoot(workspacePath: string): string {
     currentDir = parentDir;
   }
 
-  // 如果找不到 ..ace-sidebar 或 .git，使用工作区路径
+  // 如果找不到 .ace-sidebar 或 .git，使用工作区路径
   return workspacePath;
 }
 
 /**
- * 获取项目的 ..ace-sidebar 目录路径
+ * 获取项目的 .ace-sidebar 目录路径
  * 如果不存在则创建
  *
  * @param projectRoot 项目根目录
- * @returns ..ace-sidebar 目录路径
+ * @returns .ace-sidebar 目录路径
  */
 export function getAceDir(projectRoot: string): string {
-  const aceDir = path.join(projectRoot, '..ace-sidebar');
+  const aceDir = path.join(projectRoot, '.ace-sidebar');
 
   if (!fs.existsSync(aceDir)) {
     fs.mkdirSync(aceDir, { recursive: true });
 
-    // 尝试将 ..ace-sidebar 添加到 .gitignore
+    // 尝试将 .ace-sidebar 添加到 .gitignore
     addToGitignore(projectRoot);
   }
 
@@ -66,7 +66,7 @@ export function getAceDir(projectRoot: string): string {
 }
 
 /**
- * 将 ..ace-sidebar 添加到 .gitignore
+ * 将 .ace-sidebar 添加到 .gitignore
  */
 function addToGitignore(projectRoot: string): void {
   const gitignorePath = path.join(projectRoot, '.gitignore');
@@ -76,16 +76,16 @@ function addToGitignore(projectRoot: string): void {
     if (fs.existsSync(gitignorePath)) {
       content = fs.readFileSync(gitignorePath, 'utf-8');
 
-      // 检查是否已经包含 ..ace-sidebar
-      if (content.includes('..ace-sidebar')) {
+      // 检查是否已经包含 .ace-sidebar
+      if (content.includes('.ace-sidebar')) {
         return;
       }
     }
 
-    // 添加 ..ace-sidebar 到 .gitignore
+    // 添加 .ace-sidebar 到 .gitignore
     const newContent = content.endsWith('\n') || content === ''
-      ? `${content}..ace-sidebar/\n`
-      : `${content}\n..ace-sidebar/\n`;
+      ? `${content}.ace-sidebar/\n`
+      : `${content}\n.ace-sidebar/\n`;
 
     fs.writeFileSync(gitignorePath, newContent, 'utf-8');
   } catch (error) {

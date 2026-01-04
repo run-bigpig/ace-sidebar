@@ -192,7 +192,7 @@
             "*.pyd",
             "*.so",
             "*.dll",
-            "..ace-sidebar"
+            ".ace-sidebar"
           ],
           "scope": "resource",
           "description": "索引时排除的路径或通配符模式",
